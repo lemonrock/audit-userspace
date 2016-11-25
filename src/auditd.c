@@ -185,13 +185,17 @@ static int extract_type(const char *str)
 	// ptr should be at 't'
 	ptr2 = strchr(ptr, ' ');
 	// get type=xxx in a buffer
-	tptr = strndupa(ptr, ptr2 - ptr);
+	tptr = strndup(ptr, ptr2 - ptr);
 	// find =
 	str = strchr(tptr, '=');
 	if (str == NULL)
+	{
+		free(tptr);
 		return -1; // Malformed - bomb out
+	}
 	// name is 1 past
 	str++;
+	free(tptr);
 	return audit_name_to_msg_type(str);
 }
 

@@ -1089,9 +1089,9 @@ static int extract_timestamp(const char *b, au_event_t *e)
 
         e->host = NULL;
 	if (*b == 'n')
-		tmp = strndupa(b, 340);
+		tmp = strndup(b, 340);
 	else
-		tmp = strndupa(b, 80);
+		tmp = strndup(b, 80);
 	ptr = audit_strsplit(tmp);
 	if (ptr) {
 		// Optionally grab the node - may or may not be included
@@ -1127,6 +1127,7 @@ static int extract_timestamp(const char *b, au_event_t *e)
 		// else we have a bad line
 	}
 	// else we have a bad line
+	free(tmp);
 	return rc;
 }
 

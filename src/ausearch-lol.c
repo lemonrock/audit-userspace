@@ -135,9 +135,9 @@ static int extract_timestamp(const char *b, event *e)
 
 	e->node = NULL;
 	if (*b == 'n')
-		tmp = strndupa(b, 340);
+		tmp = strndup(b, 340);
 	else
-		tmp = strndupa(b, 80);
+		tmp = strndup(b, 80);
 	ptr = audit_strsplit(tmp);
 	if (ptr) {
 		// Check to see if this is the node info
@@ -168,15 +168,20 @@ static int extract_timestamp(const char *b, event *e)
 					fprintf(stderr,
 					  "Error extracting time stamp (%s)\n",
 						ptr);
+					free(tmp);
 					return 0;
 				} else if ((start_time && e->sec < start_time)
 					|| (end_time && e->sec > end_time))
+				{
+						free(tmp);
 					return 0;
+				}
 				else {
 					if (tnode)
 						e->node = strdup(tnode);
 					e->type = audit_name_to_msg_type(ttype);
 				}
+				free(tmp);
 				return 1;
 			}
 			// else we have a bad line
@@ -184,6 +189,7 @@ static int extract_timestamp(const char *b, event *e)
 		// else we have a bad line
 	}
 	// else we have a bad line
+	free(tmp);
 	return 0;
 }
 
