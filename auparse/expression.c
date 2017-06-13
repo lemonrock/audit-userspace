@@ -122,7 +122,7 @@ parser_malloc(struct parsing *p, size_t size)
 	void *res;
 
 	res = malloc(size);
-	if (res != NULL || size == 0)
+	if (res)
 		return res;
 	*p->error = strdup("Out of memory");
 	return NULL;
@@ -325,7 +325,7 @@ lex(struct parsing *p)
 			(((C) >= 'a' && (C) <= 'z')	\
 			 || ((C) >= 'A' && (C) <= 'Z')	\
 			 || ((C) >= '0' && (C) <= '9')	\
-			 || (C) == '_')
+			 || (C) == '_' || (C) == '-')
 		if (IS_UNQUOTED_STRING_CHAR(*p->src)) {
 			size_t len;
 

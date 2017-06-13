@@ -1,5 +1,5 @@
 /* libaudit.c -- 
- * Copyright 2004-2009,2012,2014,2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2004-2009,2012,2014,2016-17 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -498,7 +498,8 @@ int audit_set_backlog_limit(int fd, uint32_t limit)
 int audit_set_backlog_wait_time(int fd, uint32_t bwt)
 {
 	int rc = -1;
-#if HAVE_DECL_AUDIT_VERSION_BACKLOG_WAIT_TIME
+#if HAVE_DECL_AUDIT_VERSION_BACKLOG_WAIT_TIME == 1 || \
+    HAVE_DECL_AUDIT_STATUS_BACKLOG_WAIT_TIME == 1
 	struct audit_status s;
 
 	memset(&s, 0, sizeof(s));
@@ -510,6 +511,25 @@ int audit_set_backlog_wait_time(int fd, uint32_t bwt)
 			"Error sending backlog limit request (%s)", 
 			strerror(-rc));
 #endif
+	return rc;
+}
+
+int audit_reset_lost(int fd)
+{
+	int rc;
+	struct audit_status s;
+
+	if ((audit_get_features() & AUDIT_FEATURE_BITMAP_LOST_RESET) == 0)
+		return -EAU_FIELDNOSUPPORT;
+
+	memset(&s, 0, sizeof(s));
+	s.mask = AUDIT_STATUS_LOST;
+	s.lost = 0;
+	rc = audit_send(fd, AUDIT_SET, &s, sizeof(s));
+	if (rc < 0)
+		audit_msg(audit_priority(errno),
+			"Error sending lost reset request (%s)", 
+			strerror(-rc));
 	return rc;
 }
 
@@ -878,6 +898,35 @@ int audit_setloginuid(uid_t uid)
 	return rc;
 }
 
+/*
+ * This function will retreive the login session or -2 if there
+ * is an error.
+ */
+uint32_t audit_get_session(void)
+{
+	uint32_t ses;
+	int len, in;
+	char buf[16];
+
+	errno = 0;
+	in = open("/proc/self/sessionid", O_NOFOLLOW|O_RDONLY);
+	if (in < 0)
+		return -2;
+	do {
+		len = read(in, buf, sizeof(buf));
+	} while (len < 0 && errno == EINTR);
+	close(in);
+	if (len < 0 || len >= sizeof(buf))
+		return -2;
+	buf[len] = 0;
+	errno = 0;
+	ses = strtoul(buf, 0, 10);
+	if (errno)
+		return -2;
+	else
+		return ses;
+}
+
 int audit_rule_syscall_data(struct audit_rule_data *rule, int scall)
 {
 	int word = AUDIT_WORD(scall);
@@ -918,7 +967,8 @@ int audit_rule_syscallbyname_data(struct audit_rule_data *rule,
 
 int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 					 const char *pair,
-					 int flags) {
+					 int flags)
+{
 	const char *f = pair;
 	char       *v;
 	int        op;
@@ -926,10 +976,10 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 	struct audit_rule_data *rule = *rulep;
 
 	if (f == NULL)
-		return -1;
+		return -EAU_FILTERMISSING;
 
 	if (rule->field_count >= (AUDIT_MAX_FIELDS - 1))
-		return -28;
+		return -EAU_FIELDTOOMANY;
 
 	/* look for 2-char operators first
 	   then look for 1-char operators afterwards
@@ -944,24 +994,24 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 		*v++ = '\0';
 		op = AUDIT_EQUAL;
 	} else {
-		return -13;
+		return -EAU_OPEQNOTEQ;
 	}
 
 	if (*f == 0)
-		return -24;
+		return -EAU_COMPFIELDNAME;
 
 	if (*v == 0)
-		return -25;
+		return -EAU_COMPVAL;
 
 	if ((field1 = audit_name_to_field(f)) < 0)
-		return -26;
+		return -EAU_COMPFIELDUNKNOWN;
 
 	if ((field2 = audit_name_to_field(v)) < 0)
-		return -27;
+		return -EAU_COMPVALUNKNOWN;
 
 	/* Interfield comparison can only be in exit filter */
 	if (flags != AUDIT_FILTER_EXIT)
-		return -7;
+		return -EAU_EXITONLY;
 
 	// It should always be AUDIT_FIELD_COMPARE
 	rule->fields[rule->field_count] = AUDIT_FIELD_COMPARE;
@@ -993,7 +1043,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_UID_TO_EUID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		case AUDIT_FSUID:
@@ -1019,7 +1069,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_UID_TO_FSUID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		case AUDIT_LOGINUID:
@@ -1045,7 +1095,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_UID_TO_AUID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		case AUDIT_SUID:
@@ -1071,7 +1121,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_UID_TO_SUID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		case AUDIT_OBJ_UID:
@@ -1097,7 +1147,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_SUID_TO_OBJ_UID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		case AUDIT_UID:
@@ -1123,7 +1173,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_UID_TO_SUID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 
@@ -1147,7 +1197,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_EGID_TO_SGID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		case AUDIT_FSGID:
@@ -1169,7 +1219,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						 AUDIT_COMPARE_EGID_TO_FSGID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		case AUDIT_GID:
@@ -1191,7 +1241,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_GID_TO_SGID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		case AUDIT_OBJ_GID:
@@ -1213,7 +1263,7 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_SGID_TO_OBJ_GID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		case AUDIT_SGID:
@@ -1235,11 +1285,11 @@ int audit_rule_interfield_comp_data(struct audit_rule_data **rulep,
 						AUDIT_COMPARE_EGID_TO_SGID;
 				break;
 			default:
-				return -1;
+				return -EAU_COMPINCOMPAT;
 			}
 			break;
 		default:
-			return -1;
+			return -EAU_COMPINCOMPAT;
 			break;
 	}
 	rule->field_count++;
@@ -1339,10 +1389,10 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 	struct audit_rule_data *rule = *rulep;
 
 	if (f == NULL)
-		return -1;
+		return -EAU_FILTERMISSING;
 
 	if (rule->field_count >= (AUDIT_MAX_FIELDS - 1))
-		return -28;
+		return -EAU_FIELDTOOMANY;
 
 	/* look for 2-char operators first
 	   then look for 1-char operators afterwards
@@ -1380,23 +1430,23 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 	}
 
 	if (v == NULL)
-		return -1;
+		return -EAU_OPMISSING;
 	
 	if (*f == 0)
-		return -22;
+		return -EAU_FIELDNAME;
 
 	if (*v == 0)
-		return -20;
+		return -EAU_FIELDVALMISSING;
 
 	if ((field = audit_name_to_field(f)) < 0) 
-		return -2;
+		return -EAU_FIELDUNKNOWN;
 
 	/* Exclude filter can be used only with MSGTYPE and cred fields */
 	if (flags == AUDIT_FILTER_EXCLUDE) {
 		uint32_t features = audit_get_features();
 		if ((features & AUDIT_FEATURE_BITMAP_EXCLUDE_EXTEND) == 0) {
 			if (field != AUDIT_MSGTYPE)
-				return -30;
+				return -EAU_FIELDNOSUPPORT;
 		} else {
 			switch(field) {
 				case AUDIT_PID:
@@ -1411,7 +1461,7 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 				case AUDIT_SUBJ_CLR:
 					break;
 				default:
-					return -12;
+					return -EAU_MSGTYPECREDEXCLUDE;
 			}
 		}
 	}
@@ -1466,7 +1516,7 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 			break;
 		case AUDIT_EXIT:
 			if (flags != AUDIT_FILTER_EXIT)
-				return -7;
+				return -EAU_EXITONLY;
 			vlen = strlen(v);
 			if (isdigit((char)*(v))) 
 				rule->values[rule->field_count] = 
@@ -1479,13 +1529,13 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 				rule->values[rule->field_count] = 
 						audit_name_to_errno(v);
 				if (rule->values[rule->field_count] == 0) 
-					return -15;
+					return -EAU_ERRUNKNOWN;
 			}
 			break;
 		case AUDIT_MSGTYPE:
 			if (flags != AUDIT_FILTER_EXCLUDE &&
 					flags != AUDIT_FILTER_USER)
-				return -9;
+				return -EAU_MSGTYPEEXCLUDEUSER;
 
 			if (isdigit((char)*(v)))
 				rule->values[rule->field_count] =
@@ -1495,7 +1545,7 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 					rule->values[rule->field_count] =
 						audit_name_to_msg_type(v);
 				else
-					return -8;
+					return -EAU_MSGTYPEUNKNOWN;
 			break;
 		/* These next few are strings */
 		case AUDIT_OBJ_USER:
@@ -1508,7 +1558,7 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 			/* Watch & object filtering is invalid on anything
 			 * but exit */
 			if (flags != AUDIT_FILTER_EXIT)
-				return -7;
+				return -EAU_EXITONLY;
 			if (field == AUDIT_WATCH || field == AUDIT_DIR)
 				_audit_permadded = 1;
 
@@ -1523,21 +1573,21 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 			if (field == AUDIT_EXE) {
 				uint32_t features = audit_get_features();
 				if ((features & AUDIT_FEATURE_BITMAP_EXECUTABLE_PATH) == 0)
-					return -30;
+					return -EAU_FIELDNOSUPPORT;
 				if (op != AUDIT_EQUAL)
-					return -29;
+					return -EAU_OPEQ;
 				_audit_exeadded = 1;
 			}
 			if (field == AUDIT_FILTERKEY &&
 				!(_audit_syscalladded || _audit_permadded ||
 				_audit_exeadded))
-                                return -19;
+                                return -EAU_KEYDEP;
 			vlen = strlen(v);
 			if (field == AUDIT_FILTERKEY &&
 					vlen > AUDIT_MAX_KEY_LEN)
-				return -11;
+				return -EAU_STRTOOLONG;
 			else if (vlen > PATH_MAX)
-				return -11;
+				return -EAU_STRTOOLONG;
 			rule->values[rule->field_count] = vlen;
 			offset = rule->buflen;
 			rule->buflen += vlen;
@@ -1554,21 +1604,21 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 			break;
 		case AUDIT_ARCH:
 			if (_audit_syscalladded) 
-				return -3;
+				return -EAU_ARCHMISPLACED;
 			if (!(op == AUDIT_NOT_EQUAL || op == AUDIT_EQUAL))
-				return -13;
+				return -EAU_OPEQNOTEQ;
 			if (isdigit((char)*(v))) {
 				int machine;
 
 				errno = 0;
 				_audit_elf = strtoul(v, NULL, 0);
 				if (errno) 
-					return -5;
+					return -EAU_ELFUNKNOWN;
 
 				// Make sure we have a valid mapping
 				machine = audit_elf_to_machine(_audit_elf);
 				if (machine < 0)
-					return -5;
+					return -EAU_ELFUNKNOWN;
 			}
 			else {
 				const char *arch=v;
@@ -1578,7 +1628,7 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 				   to elf. */
 				elf = audit_machine_to_elf(machine);
 				if (elf == 0)
-					return -5;
+					return -EAU_ELFUNKNOWN;
 
 				_audit_elf = elf;
 			}
@@ -1587,15 +1637,15 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 			break;
 		case AUDIT_PERM:
 			if (flags != AUDIT_FILTER_EXIT)
-				return -7;
+				return -EAU_EXITONLY;
 			else if (op != AUDIT_EQUAL)
-				return -13;
+				return -EAU_OPEQ;
 			else {
 				unsigned int i, len, val = 0;
 
 				len = strlen(v);
 				if (len > 4)
-					return -11;
+					return -EAU_STRTOOLONG;
 
 				for (i = 0; i < len; i++) {
 					switch (tolower(v[i])) {
@@ -1612,7 +1662,7 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 							val |= AUDIT_PERM_ATTR;
 							break;
 						default:
-							return -14;
+							return -EAU_PERMRWXA;
 					}
 				}
 				rule->values[rule->field_count] = val;
@@ -1620,11 +1670,11 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 			break;
 		case AUDIT_FILETYPE:
 			if (!(flags == AUDIT_FILTER_EXIT))
-				return -17;
+				return -EAU_EXITONLY;
 			rule->values[rule->field_count] = 
 				audit_name_to_ftype(v);
 			if ((int)rule->values[rule->field_count] < 0) {
-				return -16;
+				return -EAU_FILETYPEUNKNOWN;
 			}
 			break;
 		case AUDIT_ARG0...AUDIT_ARG3:
@@ -1637,16 +1687,16 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 				rule->values[rule->field_count] =
 					strtol(v, NULL, 0);
 			else 
-				return -21;
+				return -EAU_FIELDVALNUM;
 			break;
 		case AUDIT_SESSIONID:
 			if ((audit_get_features() &
 				AUDIT_FEATURE_BITMAP_SESSIONID_FILTER) == 0)
-				return -30;
+				return -EAU_FIELDNOSUPPORT;
 			if (flags != AUDIT_FILTER_EXCLUDE &&
 			    flags != AUDIT_FILTER_USER &&
 			    flags != AUDIT_FILTER_EXIT)
-				return -31;
+				return -EAU_FIELDNOFILTER;
 			// Do positive & negative separate for 32 bit systems
 			vlen = strlen(v);
 			if (isdigit((char)*(v))) 
@@ -1662,20 +1712,20 @@ int audit_rule_fieldpair_data(struct audit_rule_data **rulep, const char *pair,
 		case AUDIT_DEVMAJOR...AUDIT_INODE:
 		case AUDIT_SUCCESS:
 			if (flags != AUDIT_FILTER_EXIT)
-				return -7;
+				return -EAU_EXITONLY;
 			/* fallthrough */
 		default:
 			if (field == AUDIT_INODE) {
 				if (!(op == AUDIT_NOT_EQUAL ||
 							op == AUDIT_EQUAL))
-					return -13;
+					return -EAU_OPEQNOTEQ;
 			}
 
 			if (field == AUDIT_PPID && !(flags==AUDIT_FILTER_EXIT))
-				return -17;
+				return -EAU_EXITONLY;
 			
 			if (!isdigit((char)*(v)))
-				return -21;
+				return -EAU_FIELDVALNUM;
 
 			if (field == AUDIT_INODE)
 				rule->values[rule->field_count] =

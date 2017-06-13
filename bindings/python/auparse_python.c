@@ -424,6 +424,10 @@ AuParser_init(AuParser *self, PyObject *args, PyObject *kwds)
             PyErr_SetString(PyExc_ValueError, "source must be resolvable to a file descriptor when source_type is AUSOURCE_DESCRIPTOR");
             return -1;
         }
+        if ((self->au = auparse_init(source_type, fd)) == NULL) {
+            PyErr_SetFromErrno(PyExc_EnvironmentError);
+            return -1;
+        }
     } break;
     case AUSOURCE_FILE_POINTER: {
         FILE* fp;
@@ -959,7 +963,7 @@ a search condition is met. The possible values are:\n\
 \n\
 AUSEARCH_STOP_EVENT:\n\
 This one repositions the cursors to the first field of the first\n\
-record of the event con- taining the items searched for.\n\
+record of the event containing the items searched for.\n\
 \n\
 AUSEARCH_STOP_RECORD:\n\
 This one repositions the cursors to the first field of the record\n\
@@ -1059,6 +1063,364 @@ AuParser_parse_next_event(AuParser *self)
     PyErr_SetFromErrno(PyExc_EnvironmentError);
     return NULL;
 }
+
+
+
+/********************************
+ * aup_normalize
+ ********************************/
+PyDoc_STRVAR(aup_normalize_doc,
+"aup_normalize(opt) Normalize the audit event for uniform access to fields.\n\
+\n\
+aup_normalize() takes an argument to decide if it should also gather subject\n\
+and object attributes. The possible values are:\n\
+\n\
+NORM_OPT_ALL:\n\
+This means include subject and object attributes\n\
+\n\
+NORM_OPT_NO_ATTRS:\n\
+This means do not gather subject and object attributes\n\
+");
+static PyObject *
+AuParser_aup_normalize(AuParser *self, PyObject *args)
+{
+    int opt;
+    int result;
+
+    if (!PyArg_ParseTuple(args, "i", &opt)) return NULL;
+    PARSER_CHECK;
+    result = auparse_normalize(self->au, opt);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+}
+
+
+/********************************
+ * aup_normalize_get_event_kind
+ ********************************/
+PyDoc_STRVAR(aup_normalize_get_event_kind_doc,
+"aup_normalize_get_event_kind() This returns a string that indicates what\n\
+kind of event this is.\n\
+");
+static PyObject *
+AuParser_aup_normalize_get_event_kind(AuParser *self)
+{
+    const char *kind = NULL;
+
+    PARSER_CHECK;
+    kind = auparse_normalize_get_event_kind(self->au);
+    if (kind == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "'event_kind' has no value");
+        return NULL;
+    }
+    return Py_BuildValue("s", kind);
+}
+
+/********************************
+ * aup_normalize_session
+ ********************************/
+PyDoc_STRVAR(aup_normalize_session_doc,
+"aup_normalize_session() This function positions the internal cursor on\n\
+the session's field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_session(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_session(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_subject_primary
+ ********************************/
+PyDoc_STRVAR(aup_normalize_subject_primary_doc,
+"aup_normalize_subject_primary() This function positions the internal\n\
+cursor on the subject's field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_subject_primary(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_subject_primary(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_subject_secondary
+ ********************************/
+PyDoc_STRVAR(aup_normalize_subject_secondary_doc,
+"aup_normalize_subject_secondary() This function positions the internal\n\
+cursor on the subject's secondary field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_subject_secondary(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_subject_secondary(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_subject_first_attribute
+ ********************************/
+PyDoc_STRVAR(aup_normalize_subject_first_attribute_doc,
+"aup_normalize_subject_first_attribute() This function positions the internal\n\
+cursor on the subject's first attribute field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_subject_first_attribute(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_subject_first_attribute(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_subject_next_attribute
+ ********************************/
+PyDoc_STRVAR(aup_normalize_subject_next_attribute_doc,
+"aup_normalize_subject_next_attribute() This function positions the internal\n\
+cursor on the next subject's attribute field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_subject_next_attribute(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_subject_next_attribute(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_subject_kind
+ ********************************/
+PyDoc_STRVAR(aup_normalize_subject_kind_doc,
+"aup_normalize_subject_kind() This returns a string that indicates the\n\
+kind of account the subject is.\n\
+");
+static PyObject *
+AuParser_aup_normalize_subject_kind(AuParser *self)
+{
+    const char *kind = NULL;
+
+    PARSER_CHECK;
+    kind = auparse_normalize_subject_kind(self->au);
+    if (kind == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "'subject_kind' has no value");
+        return NULL;
+    }
+    return Py_BuildValue("s", kind);
+}
+
+/********************************
+ * aup_normalize_get_action
+ ********************************/
+PyDoc_STRVAR(aup_normalize_get_action_doc,
+"aup_normalize_get_action() This returns a string that indicates the\n\
+subject's action.\n\
+");
+static PyObject *
+AuParser_aup_normalize_get_action(AuParser *self)
+{
+    const char *action = NULL;
+
+    PARSER_CHECK;
+    action = auparse_normalize_get_action(self->au);
+    if (action == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "'action' has no value");
+        return NULL;
+    }
+    return Py_BuildValue("s", action);
+}
+
+/********************************
+ * aup_normalize_object_primary
+ ********************************/
+PyDoc_STRVAR(aup_normalize_object_primary_doc,
+"aup_normalize_object_primary() This function positions the internal\n\
+cursor on the object's field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_object_primary(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_object_primary(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_object_secondary
+ ********************************/
+PyDoc_STRVAR(aup_normalize_object_secondary_doc,
+"aup_normalize_object_secondary() This function positions the internal\n\
+cursor on the object's secondary field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_object_secondary(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_object_secondary(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_object_first_attribute
+ ********************************/
+PyDoc_STRVAR(aup_normalize_object_first_attribute_doc,
+"aup_normalize_object_first_attribute() This function positions the internal\n\
+cursor on the object's first attribute field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_object_first_attribute(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_object_first_attribute(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_object_next_attribute
+ ********************************/
+PyDoc_STRVAR(aup_normalize_object_next_attribute_doc,
+"aup_normalize_object_next_attribute() This function positions the internal\n\
+cursor on the next object's attribute field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_object_next_attribute(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_object_next_attribute(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_object_kind
+ ********************************/
+PyDoc_STRVAR(aup_normalize_object_kind_doc,
+"aup_normalize_object_kind() This returns a string that indicates the\n\
+kind of thing the object is.\n\
+");
+static PyObject *
+AuParser_aup_normalize_object_kind(AuParser *self)
+{
+    const char *kind = NULL;
+
+    PARSER_CHECK;
+    kind = auparse_normalize_object_kind(self->au);
+    if (kind == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "'object_kind' has no value");
+        return NULL;
+    }
+    return Py_BuildValue("s", kind);
+}
+
+/********************************
+ * aup_normalize_get_results
+ ********************************/
+PyDoc_STRVAR(aup_normalize_get_results_doc,
+"aup_normalize_subject_primary() This function positions the internal\n\
+cursor on the results field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_get_results(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_get_results(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
+/********************************
+ * aup_normalize_how
+ ********************************/
+PyDoc_STRVAR(aup_normalize_how_doc,
+"aup_normalize_how() This returns a string that indicates the\n\
+how the object is being accessed. This is usually a program.\n\
+");
+static PyObject *
+AuParser_aup_normalize_how(AuParser *self)
+{
+    const char *how = NULL;
+
+    PARSER_CHECK;
+    how = auparse_normalize_how(self->au);
+    if (how == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "'how' has no value");
+        return NULL;
+    }
+    return Py_BuildValue("s", how);
+}
+
+/********************************
+ * aup_normalize_key
+ ********************************/
+PyDoc_STRVAR(aup_normalize_key_doc,
+"aup_normalize_key() This function positions the internal\n\
+cursor on the key field of the event.\n\
+");
+static PyObject *
+AuParser_aup_normalize_key(AuParser *self)
+{
+    int result;
+
+    PARSER_CHECK;
+    result = auparse_normalize_key(self->au);
+    if (result >  0) Py_RETURN_TRUE;
+    if (result == 0) Py_RETURN_FALSE;
+    PyErr_SetFromErrno(PyExc_ValueError);
+    return NULL;
+}
+
 
 /********************************
  * auparse_get_timestamp
@@ -1383,7 +1745,7 @@ PyDoc_STRVAR(find_field_doc,
 "find_field(name) Search for field name.\n\
 \n\
 find_field() will scan all records in an event to find the first\n\
-occurence of the field name passed to it. Searching begins from the\n\
+occurrence of the field name passed to it. Searching begins from the\n\
 cursor’s current position. The field name is stored for subsequent\n\
 searching.\n\
 \n\
@@ -1490,7 +1852,7 @@ in the current event.\n\
 \n\
 Returns AUPARSE_TYPE_UNCLASSIFIED if the field’s data type has no\n\
 known description or is an integer. Otherwise it returns another enum.\n\
-Fields with the type AUPARSE_TYPE_ESCAPED must be interpretted to access\n\
+Fields with the type AUPARSE_TYPE_ESCAPED must be interpreted to access\n\
 their value since those field’s raw value is encoded.\n\
 ");
 static PyObject *
@@ -1525,7 +1887,7 @@ AuParser_get_field_int(AuParser *self)
     Py_RETURN_NONE;
 }
 
-// FIXME: can't tell if interpret is succesful, always returns some string in somewhat arbitrary format.
+// FIXME: can't tell if interpret is successful, always returns some string in somewhat arbitrary format.
 PyDoc_STRVAR(interpret_field_doc,
 "interpret_field() Return an interpretation of the current field as a string that has the chosen character escaping applied.\n\
 \n\
@@ -1569,6 +1931,23 @@ static PyMethodDef AuParser_methods[] = {
     {"search_clear",      (PyCFunction)AuParser_search_clear,      METH_NOARGS,  search_clear_doc},
     {"search_next_event", (PyCFunction)AuParser_search_next_event, METH_NOARGS,  search_next_event_doc},
     {"parse_next_event",  (PyCFunction)AuParser_parse_next_event,  METH_NOARGS,  parse_next_event_doc},
+    {"aup_normalize",     (PyCFunction)AuParser_aup_normalize,     METH_VARARGS, aup_normalize_doc},
+    {"aup_normalize_get_event_kind",  (PyCFunction)AuParser_aup_normalize_get_event_kind, METH_NOARGS, aup_normalize_get_event_kind_doc},
+    {"aup_normalize_session",  (PyCFunction)AuParser_aup_normalize_session, METH_NOARGS, aup_normalize_session_doc},
+    {"aup_normalize_subject_primary",  (PyCFunction)AuParser_aup_normalize_subject_primary, METH_NOARGS, aup_normalize_subject_primary_doc},
+    {"aup_normalize_subject_secondary",  (PyCFunction)AuParser_aup_normalize_subject_secondary, METH_NOARGS, aup_normalize_subject_secondary_doc},
+    {"aup_normalize_subject_first_attribute",  (PyCFunction)AuParser_aup_normalize_subject_first_attribute, METH_NOARGS, aup_normalize_subject_first_attribute_doc},
+    {"aup_normalize_subject_next_attribute",  (PyCFunction)AuParser_aup_normalize_subject_next_attribute, METH_NOARGS, aup_normalize_subject_next_attribute_doc},
+    {"aup_normalize_subject_kind",  (PyCFunction)AuParser_aup_normalize_subject_kind, METH_NOARGS, aup_normalize_subject_kind_doc},
+    {"aup_normalize_get_action",  (PyCFunction)AuParser_aup_normalize_get_action, METH_NOARGS, aup_normalize_get_action_doc},
+    {"aup_normalize_object_primary",  (PyCFunction)AuParser_aup_normalize_object_primary, METH_NOARGS, aup_normalize_object_primary_doc},
+    {"aup_normalize_object_secondary",  (PyCFunction)AuParser_aup_normalize_object_secondary, METH_NOARGS, aup_normalize_object_secondary_doc},
+    {"aup_normalize_object_first_attribute",  (PyCFunction)AuParser_aup_normalize_object_first_attribute, METH_NOARGS, aup_normalize_object_first_attribute_doc},
+    {"aup_normalize_object_next_attribute",  (PyCFunction)AuParser_aup_normalize_object_next_attribute, METH_NOARGS, aup_normalize_object_next_attribute_doc},
+    {"aup_normalize_object_kind",  (PyCFunction)AuParser_aup_normalize_object_kind, METH_NOARGS, aup_normalize_object_kind_doc},
+    {"aup_normalize_get_results",  (PyCFunction)AuParser_aup_normalize_get_results, METH_NOARGS, aup_normalize_get_results_doc},
+    {"aup_normalize_how", (PyCFunction)AuParser_aup_normalize_how, METH_NOARGS, aup_normalize_how_doc},
+    {"aup_normalize_key", (PyCFunction)AuParser_aup_normalize_key, METH_NOARGS, aup_normalize_key_doc},
     {"get_timestamp",     (PyCFunction)AuParser_get_timestamp,     METH_NOARGS,  get_timestamp_doc},
     {"get_num_records",   (PyCFunction)AuParser_get_num_records,   METH_NOARGS,  get_num_records_doc},
     {"first_record",      (PyCFunction)AuParser_first_record,      METH_NOARGS,  first_record_doc},
@@ -1739,6 +2118,10 @@ initauparse(void)
     PyModule_AddIntConstant(m, "AUSEARCH_STOP_EVENT",    AUSEARCH_STOP_EVENT);
     PyModule_AddIntConstant(m, "AUSEARCH_STOP_RECORD",   AUSEARCH_STOP_RECORD);
     PyModule_AddIntConstant(m, "AUSEARCH_STOP_FIELD",    AUSEARCH_STOP_FIELD);
+
+    /* normalize_option_t */
+    PyModule_AddIntConstant(m, "NORM_OPT_ALL", NORM_OPT_ALL);
+    PyModule_AddIntConstant(m, "NORM_OPT_NO_ATTRS", NORM_OPT_NO_ATTRS);
 
     /* ausearch_rule_t */
     PyModule_AddIntConstant(m, "AUSEARCH_RULE_CLEAR",    AUSEARCH_RULE_CLEAR);

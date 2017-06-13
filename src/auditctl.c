@@ -1,5 +1,5 @@
 /* auditctl.c -- 
- * Copyright 2004-2016 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2004-2017 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -131,10 +131,14 @@ static void usage(void)
      "    -W <path>           Remove watch at <path>\n"
 #if defined(HAVE_DECL_AUDIT_FEATURE_VERSION) && \
     defined(HAVE_STRUCT_AUDIT_STATUS_FEATURE_BITMAP)
-     "    --loginuid-immutable   Make loginuids unchangeable once set\n"
+     "    --loginuid-immutable  Make loginuids unchangeable once set\n"
 #endif
-#if HAVE_DECL_AUDIT_VERSION_BACKLOG_WAIT_TIME
-     "    --backlog_wait_time    Set the kernel backlog_wait_time\n"
+#if HAVE_DECL_AUDIT_VERSION_BACKLOG_WAIT_TIME == 1 || \
+    HAVE_DECL_AUDIT_STATUS_BACKLOG_WAIT_TIME == 1
+     "    --backlog_wait_time  Set the kernel backlog_wait_time\n"
+#endif
+#if defined(HAVE_STRUCT_AUDIT_STATUS_FEATURE_BITMAP)
+     "    --reset-lost         Reset the lost record counter\n"
 #endif
      );
 }
@@ -509,8 +513,12 @@ struct option long_opts[] =
     defined(HAVE_STRUCT_AUDIT_STATUS_FEATURE_BITMAP)
   {"loginuid-immutable", 0, NULL, 1},
 #endif
-#if HAVE_DECL_AUDIT_VERSION_BACKLOG_WAIT_TIME
+#if HAVE_DECL_AUDIT_VERSION_BACKLOG_WAIT_TIME == 1 || \
+    HAVE_DECL_AUDIT_STATUS_BACKLOG_WAIT_TIME == 1
   {"backlog_wait_time", 1, NULL, 2},
+#endif
+#if defined(HAVE_STRUCT_AUDIT_STATUS_FEATURE_BITMAP)
+  {"reset-lost", 0, NULL, 3},
 #endif
   {NULL, 0, NULL, 0}
 };
@@ -522,7 +530,7 @@ struct option long_opts[] =
  */
 static int setopt(int count, int lineno, char *vars[])
 {
-    int c;
+    int c, lidx = 0;
     int retval = 0, rc;
 
     optind = 0;
@@ -532,7 +540,7 @@ static int setopt(int count, int lineno, char *vars[])
 
     while ((retval >= 0) && (c = getopt_long(count, vars,
 			"hicslDvtC:e:f:r:b:a:A:d:S:F:m:R:w:W:k:p:q:",
-			long_opts, NULL)) != EOF) {
+			long_opts, &lidx)) != EOF) {
 	int flags = AUDIT_FILTER_UNSET;
 	rc = 10;	// Init to something impossible to see if unused.
         switch (c) {
@@ -1014,7 +1022,8 @@ process_keys:
 			return -2;  // success - no reply for this
 		break;
 	case 2:
-#if HAVE_DECL_AUDIT_VERSION_BACKLOG_WAIT_TIME
+#if HAVE_DECL_AUDIT_VERSION_BACKLOG_WAIT_TIME == 1 || \
+    HAVE_DECL_AUDIT_STATUS_BACKLOG_WAIT_TIME == 1
 		if (optarg && isdigit(optarg[0])) {
 			uint32_t bwt;
 			errno = 0;
@@ -1039,6 +1048,15 @@ process_keys:
 			"backlog_wait_time is not supported on your kernel");
 		retval = -1;
 #endif
+		break;
+	case 3:
+		if ((rc = audit_reset_lost(fd)) >= 0) {
+			audit_msg(LOG_INFO, "lost: %u", rc);
+			return -2;
+		} else {
+			audit_number_to_errmsg(rc, long_opts[lidx].name);
+			retval = -1;
+		}
 		break;
         default: 
 		usage();
@@ -1073,8 +1091,10 @@ process_keys:
 	} else {
 		/* Add this to the rule */
 		int ret = audit_rule_fieldpair_data(&rule_new, cmd, flags);
-		if (ret < 0)
+		if (ret != 0) {
+			audit_number_to_errmsg(ret, cmd);
 			retval = -1;
+		}
 		free(cmd);
 	}
     }
